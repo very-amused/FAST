@@ -1,6 +1,4 @@
+#![allow(non_snake_case)]
+
 mod sys;
-
-// Implement FastStream methods
-use sys::FastStreamSettings;
-
-
+mod stream;

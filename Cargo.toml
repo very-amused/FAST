@@ -7,6 +7,7 @@ edition = "2024"
 crate-type = ["lib"]
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 bindgen = "0.71.0"
