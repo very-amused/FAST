@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use tokio::task;
+use tokio::{task, time};
 use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use std::borrow::{BorrowMut};
 use std::collections::VecDeque;
@@ -29,7 +29,8 @@ pub struct FastStream {
 
 struct FastStreamBuffer {
 	data: VecDeque<u8>, // buffer of raw PCM data to consume
-	frame_size: u32 // sample_size * n_channels, our minimum read unit
+	frame_size: usize, // sample_size * n_channels, our minimum read unit
+	sample_rate: usize// Numer of audio frames to read per second
 }
 
 struct FastStreamPtr(*mut FastStream);
@@ -45,15 +46,17 @@ fn new_runtime() -> io::Result<Runtime>{
 
 pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut FastStream {
 	// Create buffer
-	let frame_size: u32 = unsafe {
-		((*settings).sample_size as u32) * (*settings).n_channels
+	let frame_size: usize = unsafe {
+		((*settings).sample_size as usize) * (*settings).n_channels as usize
 	};
+	let sample_rate: usize = unsafe { (*settings).sample_rate as usize };
 	let buf_size: usize = unsafe {
-		((frame_size * (*settings).sample_rate * (*settings).buffer_ms) as usize) / 1000
+		(frame_size * sample_rate * (*settings).buffer_ms as usize) / 1000
 	};
 	let buffer = FastStreamBuffer {
 		data: VecDeque::with_capacity(buf_size),
-		frame_size
+		frame_size,
+		sample_rate
 	};
 
 	// Initialize Tokio async runtime
@@ -100,6 +103,22 @@ pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
 
 async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	let stream = unsafe { (*stream_ptr.0).borrow_mut() };
+	let buffer = &mut stream.buffer;
 
-	// TODO: set up clock and read from stream.buffer
+	// Set up interval to read frames on
+	const READ_INTERVAL_MS: u64 = 10;
+	const READ_INTERVAL_DURATION = time::Duration::from_millis(READ_INTERVAL_MS); // i.e reads of 441 frames/10ms @ 44.1khz
+	let interval = time::interval(READ_INTERVAL_DURATION);
+
+	// Compute read size (bytes) for each tick
+	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
+
+	// Event loop
+	loop {
+		// Wait for tick
+		interval.tick().await;
+
+		// Read {read_size} bytes each tick
+		todo!()
+	}
 }
