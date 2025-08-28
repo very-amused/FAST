@@ -1,17 +1,25 @@
 #![allow(dead_code)]
 use tokio::task;
-use tokio::runtime::Builder as RuntimeBuilder;
+use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use std::borrow::{BorrowMut};
 use std::collections::VecDeque;
+use std::io;
 use std::os::raw::c_int;
 use std::sync::Mutex;
 
 use crate::sys::FastStreamSettings;
 
+/// An audio sink for FAST
 pub struct FastStream {
 	runtime: tokio::runtime::Runtime,
+	/// Thread that consumes audio frames
 	stream_task: Option<task::JoinHandle<()>>,
+	/// Thread that runs callback routines
 	callback_task: Option<task::JoinHandle<()>>,
+
+	/// Buffer that
+	/// - [stream_task] reads from
+	/// - [callback_task] writes to
 	buffer: FastStreamBuffer,
 
 	// Mutices
@@ -27,6 +35,14 @@ struct FastStreamBuffer {
 struct FastStreamPtr(*mut FastStream);
 unsafe impl Send for FastStreamPtr {}
 
+/// Initialize a Tokio runtime capable of powering a FastStream
+fn new_runtime() -> io::Result<Runtime>{
+	RuntimeBuilder::new_multi_thread()
+		.worker_threads(2) // stream_task + callback_task
+		.enable_all()
+		.build()
+}
+
 pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut FastStream {
 	// Create buffer
 	let frame_size: u32 = unsafe {
@@ -41,14 +57,17 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 	};
 
 	// Initialize Tokio async runtime
+	let runtime = match new_runtime() {
+		Ok(rt) => rt,
+		Err(err) => {
+			eprintln!("Failed to initialize Tokio runtime: {}", err);
+			return std::ptr::null_mut();
+		}
+	};
 	
 	// Create stream
 	let stream = Box::new(FastStream {
-		runtime: RuntimeBuilder::new_multi_thread()
-			.worker_threads(2)
-			.enable_all()
-			.build()
-			.expect("Failed to initialize Tokio runtime"),
+		runtime,
 		stream_task: None,
 		callback_task: None,
 		buffer,
