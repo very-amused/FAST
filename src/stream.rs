@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::os::raw::c_int;
 use std::sync::Mutex;
+use crossbeam_queue::ArrayQueue;
 
 use crate::sys::FastStreamSettings;
 
@@ -28,7 +29,7 @@ pub struct FastStream {
 }
 
 struct FastStreamBuffer {
-	data: VecDeque<u8>, // buffer of raw PCM data to consume
+	data: ArrayQueue<u8>, // Ring buffer of raw PCM data to consume
 	frame_size: usize, // sample_size * n_channels, our minimum read unit
 	sample_rate: usize// Numer of audio frames to read per second
 }
@@ -54,7 +55,7 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 		(frame_size * sample_rate * (*settings).buffer_ms as usize) / 1000
 	};
 	let buffer = FastStreamBuffer {
-		data: VecDeque::with_capacity(buf_size),
+		data: ArrayQueue::new(buf_size),
 		frame_size,
 		sample_rate
 	};
@@ -107,8 +108,8 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 
 	// Set up interval to read frames on
 	const READ_INTERVAL_MS: u64 = 10;
-	const READ_INTERVAL_DURATION = time::Duration::from_millis(READ_INTERVAL_MS); // i.e reads of 441 frames/10ms @ 44.1khz
-	let interval = time::interval(READ_INTERVAL_DURATION);
+	const READ_INTERVAL_DURATION: time::Duration = time::Duration::from_millis(READ_INTERVAL_MS); // i.e reads of 441 frames/10ms @ 44.1khz
+	let mut interval = time::interval(READ_INTERVAL_DURATION);
 
 	// Compute read size (bytes) for each tick
 	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
@@ -119,6 +120,10 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 		interval.tick().await;
 
 		// Read {read_size} bytes each tick
-		todo!()
+		for i in 0..read_size {
+			if buffer.data.pop() == None {
+				eprintln!("Read error: FastStream buffer is empty");
+			}
+		}
 	}
 }

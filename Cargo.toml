@@ -8,6 +8,7 @@ crate-type = ["lib"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+crossbeam-queue = "0.3"
 
 [build-dependencies]
 bindgen = "0.71.0"
