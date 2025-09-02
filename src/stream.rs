@@ -1,11 +1,11 @@
 #![allow(dead_code)]
+use tokio::sync::oneshot;
 use tokio::{task, time};
 use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
-use std::borrow::{BorrowMut};
-use std::collections::VecDeque;
+use std::borrow::BorrowMut;
 use std::io;
 use std::os::raw::c_int;
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 use crossbeam_queue::ArrayQueue;
 
 use crate::sys::FastStreamSettings;
@@ -13,15 +13,20 @@ use crate::sys::FastStreamSettings;
 /// An audio sink for FAST
 pub struct FastStream {
 	runtime: tokio::runtime::Runtime,
-	/// Thread that consumes audio frames
-	stream_task: Option<task::JoinHandle<()>>,
-	/// Thread that runs callback routines
-	callback_task: Option<task::JoinHandle<()>>,
-
 	/// Buffer that
 	/// - [stream_task] reads from
 	/// - [callback_task] writes to
 	buffer: FastStreamBuffer,
+
+	/// Thread that consumes audio frames
+	stream_task: Option<task::JoinHandle<()>>,
+	play: Chan<bool>, // Send `true` to play/uncork the stream, send `false` to pause
+	paused: Mutex<bool>, // Indicates whether the stream is paused
+	paused_cv: Condvar, // Broadcasts updates of [paused]
+
+	/// Thread that runs callback routines
+	callback_task: Option<task::JoinHandle<()>>,
+
 
 	// Mutices
 	callback_lock: Mutex<()> // Lock to ensure we run one callback at a time. Must be acquired when
@@ -32,6 +37,15 @@ struct FastStreamBuffer {
 	data: ArrayQueue<u8>, // Ring buffer of raw PCM data to consume
 	frame_size: usize, // sample_size * n_channels, our minimum read unit
 	sample_rate: usize// Numer of audio frames to read per second
+}
+
+// A basic send/receive Tokio channel for inter-task messaging
+struct Chan<T> (oneshot::Sender<T>, oneshot::Receiver<T>);
+
+impl<T> From<(oneshot::Sender<T>, oneshot::Receiver<T>)> for Chan<T> {
+	fn from(value: (oneshot::Sender<T>, oneshot::Receiver<T>)) -> Self {
+		Self(value.0, value.1)
+	}
 }
 
 struct FastStreamPtr(*mut FastStream);
@@ -68,13 +82,18 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 			return std::ptr::null_mut();
 		}
 	};
-	
+
 	// Create stream
 	let stream = Box::new(FastStream {
 		runtime,
-		stream_task: None,
-		callback_task: None,
 		buffer,
+
+		stream_task: None,
+		play: oneshot::channel().into(),
+		paused: Mutex::new(true),
+		paused_cv: Condvar::new(),
+
+		callback_task: None,
 		callback_lock: Mutex::new(())
 	});
 	Box::leak(stream)
@@ -82,11 +101,11 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 
 pub extern "C" fn FastStream_free(stream_ptr: *mut FastStream) {
 	let stream = unsafe { Box::from_raw(stream_ptr) };
-	if let Some(join_handle) = stream.stream_task {
-		join_handle.abort();
+	if let Some(thr) = stream.stream_task {
+		thr.abort();
 	}
-	if let Some(join_handle) = stream.callback_task {
-		join_handle.abort();
+	if let Some(thr) = stream.callback_task {
+		thr.abort();
 	}
 
 	// stream gets dropped
@@ -110,20 +129,58 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	const READ_INTERVAL_MS: u64 = 10;
 	const READ_INTERVAL_DURATION: time::Duration = time::Duration::from_millis(READ_INTERVAL_MS); // i.e reads of 441 frames/10ms @ 44.1khz
 	let mut interval = time::interval(READ_INTERVAL_DURATION);
+	// CRITICAL: align ticks to play/pause event
+	interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
 	// Compute read size (bytes) for each tick
 	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
 
 	// Event loop
+'evt_loop:
 	loop {
-		// Wait for tick
-		interval.tick().await;
-
-		// Read {read_size} bytes each tick
-		for i in 0..read_size {
-			if buffer.data.pop() == None {
-				eprintln!("Read error: FastStream buffer is empty");
+		// Wait for tick or pause signal
+		tokio::select! {
+			_ = interval.tick() => {
+				// Read {read_size} bytes each tick
+				for _ in 0..read_size {
+					if buffer.data.pop() == None {
+						eprintln!("Read error: FastStream buffer is empty");
+					}
+				}
+			},
+			Ok(play) = &mut stream.play.1 => if !play {
+				// Pause signal received
+				{
+					let mut paused = stream.paused.lock().unwrap();
+					*paused = true;
+					stream.paused_cv.notify_all();
+				}
+				while let Ok(resume) = (&mut stream.play.1).await {
+					if resume {
+						let mut paused = stream.paused.lock().unwrap();
+						*paused = false;
+						stream.paused_cv.notify_all();
+						continue 'evt_loop;
+					}
+				}
 			}
 		}
 	}
+}
+
+pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
+	let stream = unsafe { (*stream_ptr).borrow_mut() };
+	let paused = stream.paused.lock().unwrap();
+
+	if play {
+		// Debounce play signals
+		if !*paused {
+			return 0;
+		}
+
+		// FIXME:
+		stream.play.0.send(true);
+	}
+
+	todo!()
 }
