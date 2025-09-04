@@ -9,6 +9,7 @@ use std::sync::{Condvar, Mutex};
 use crossbeam_queue::ArrayQueue;
 
 use crate::sys::FastStreamSettings;
+use crate::thread_flag::ThreadFlag;
 
 /// An audio sink for FAST
 pub struct FastStream {
@@ -20,9 +21,7 @@ pub struct FastStream {
 
 	/// Thread that consumes audio frames
 	stream_task: Option<task::JoinHandle<()>>,
-	play: Chan<bool>, // Send `true` to play/uncork the stream, send `false` to pause
-	paused: Mutex<bool>, // Indicates whether the stream is paused
-	paused_cv: Condvar, // Broadcasts updates of [paused]
+	paused: ThreadFlag<bool>, // Controls + indicates whether the stream is paused
 
 	/// Thread that runs callback routines
 	callback_task: Option<task::JoinHandle<()>>,
@@ -37,15 +36,6 @@ struct FastStreamBuffer {
 	data: ArrayQueue<u8>, // Ring buffer of raw PCM data to consume
 	frame_size: usize, // sample_size * n_channels, our minimum read unit
 	sample_rate: usize// Numer of audio frames to read per second
-}
-
-// A basic send/receive Tokio channel for inter-task messaging
-struct Chan<T> (oneshot::Sender<T>, oneshot::Receiver<T>);
-
-impl<T> From<(oneshot::Sender<T>, oneshot::Receiver<T>)> for Chan<T> {
-	fn from(value: (oneshot::Sender<T>, oneshot::Receiver<T>)) -> Self {
-		Self(value.0, value.1)
-	}
 }
 
 struct FastStreamPtr(*mut FastStream);
@@ -89,9 +79,7 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 		buffer,
 
 		stream_task: None,
-		play: oneshot::channel().into(),
 		paused: Mutex::new(true),
-		paused_cv: Condvar::new(),
 
 		callback_task: None,
 		callback_lock: Mutex::new(())
@@ -138,6 +126,8 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	// Event loop
 'evt_loop:
 	loop {
+	/* fixme
+		interval.tick().await;
 		// Wait for tick or pause signal
 		tokio::select! {
 			_ = interval.tick() => {
@@ -165,6 +155,7 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 				}
 			}
 		}
+	*/
 	}
 }
 

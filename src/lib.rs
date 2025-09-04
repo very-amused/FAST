@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
 
+pub mod stream;
+
 mod sys;
-mod stream;
+mod thread_flag;
