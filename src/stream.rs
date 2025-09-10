@@ -79,7 +79,7 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 		buffer,
 
 		stream_task: None,
-		paused: Mutex::new(true),
+		paused: ThreadFlag::new(true),
 
 		callback_task: None,
 		callback_lock: Mutex::new(())
@@ -106,6 +106,20 @@ pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
 		FastStream_routine(FastStreamPtr(stream_ptr)));
 	stream.stream_task = Some(handle);
 
+	// Start consuming audio by unpausing
+	return FastStream_play(stream_ptr, true);
+}
+
+pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
+	let stream = unsafe { (*stream_ptr).borrow_mut() };
+	let paused = stream.paused.get();
+
+	// Debounce play signals
+	if (play && !paused) || (!play && paused) {
+		return 0;
+	}
+
+	stream.runtime.block_on(stream.paused.set(!play));
 	return 0;
 }
 
@@ -119,6 +133,7 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	let mut interval = time::interval(READ_INTERVAL_DURATION);
 	// CRITICAL: align ticks to play/pause event
 	interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+	interval.tick().await;
 
 	// Compute read size (bytes) for each tick
 	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
@@ -126,11 +141,11 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	// Event loop
 'evt_loop:
 	loop {
-	/* fixme
-		interval.tick().await;
 		// Wait for tick or pause signal
 		tokio::select! {
-			_ = interval.tick() => {
+			_ = interval.tick() => if !stream.paused.get() {
+				if stream.paused.get() {
+				}
 				// Read {read_size} bytes each tick
 				for _ in 0..read_size {
 					if buffer.data.pop() == None {
@@ -138,40 +153,15 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 					}
 				}
 			},
-			Ok(play) = &mut stream.play.1 => if !play {
-				// Pause signal received
-				{
-					let mut paused = stream.paused.lock().unwrap();
-					*paused = true;
-					stream.paused_cv.notify_all();
+			pause = stream.paused.get_new() => {
+				// Pause flag changed
+
+				// Wait until unpaused
+				if !pause {
+					continue 'evt_loop;
 				}
-				while let Ok(resume) = (&mut stream.play.1).await {
-					if resume {
-						let mut paused = stream.paused.lock().unwrap();
-						*paused = false;
-						stream.paused_cv.notify_all();
-						continue 'evt_loop;
-					}
-				}
+				while stream.paused.get_new().await == true {}
 			}
 		}
-	*/
 	}
-}
-
-pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
-	let stream = unsafe { (*stream_ptr).borrow_mut() };
-	let paused = stream.paused.lock().unwrap();
-
-	if play {
-		// Debounce play signals
-		if !*paused {
-			return 0;
-		}
-
-		// FIXME:
-		stream.play.0.send(true);
-	}
-
-	todo!()
 }
