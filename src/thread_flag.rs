@@ -1,61 +1,59 @@
-use std::sync::{Mutex, Condvar};
-
-struct ThreadFlagVal<T: PartialEq + Copy> {
-	actual: T,
-	desired: Option<T>
-}
+use tokio::sync::Notify;
 
 // A basic flag value for one way parent -> child thread state communication
 pub struct ThreadFlag<T: PartialEq + Copy> {
-	val: Mutex<ThreadFlagVal<T>>, // actual and desired values + lock
-	done: Condvar // child thread signals that val.actual == val.desired
+	desired: Option<T>, // desired value, modified by the value setter thread
+	actual: T,
+
+	setter_wake: Notify, // wake up a setter thread b/c actual has been set from desired
+	getter_wake: Notify // wake up get_new b/c a new desired value has been provided
 }
 
 impl<T: PartialEq + Copy> ThreadFlag<T> {
 	pub fn new(initial_val: T) -> Self {
 		Self {
-			val: Mutex::new(ThreadFlagVal { actual: initial_val, desired: None }),
-			done: Condvar::new()
-		}	
+			desired: None,
+			actual: initial_val,
+
+			setter_wake: Notify::new(),
+			getter_wake: Notify::new()
+		}
 	}
 
 	/// Set a ThreadFlag's value
 	/// NOTE: should be called from the parent thread
-	pub fn set(&mut self, val: T) {
-		// Set desired value of flag, thread is expected to periodically check and update the actual
-		// value. This can be done implicitly using [get_new].
-		let mut guard = self.val.lock().unwrap();
-		guard.desired = Some(val);
+	pub async fn set(&mut self, val: T) {
+		self.desired = Some(val);
 
-		// Wait for thread to set actual value
-		self.done.wait_while(guard, |v| v.desired != None);
+		// Notify getters that [desired] has changed
+		self.getter_wake.notify_one();
+		// Wait for child thread to set actual value
+		self.setter_wake.notified().await;
 	}
 
-	// Get a ThreadFlag's value without triggering any side effects.
+	// Get a ThreadFlag's actual value without triggering any side effects.
 	//
 	// NOTE: can be called on either the parent or the child thread
 	pub fn get(&self) -> T {
-		let guard = self.val.lock().unwrap();
-		guard.actual
+		self.actual
 	}
 
-	/// Get a ThreadFlag's value iff it has changed, alowing
-	/// the child thread to update state based on changes in value.
-	/// If [Some(T)] is returned, [self.done] was signalled.
-	///
-	/// DEADLOCK HAZARD: if the child thread fails to periodically call [get_new] for all of its ThreadFlag's,
-	/// it risks locking up its parent thread and creating a deadlock.
-	///
-	/// Returns [None] if the ThreadFlag's value is unchanged
-	pub fn get_new(&mut self) -> Option<T> {
-		let mut guard = self.val.lock().unwrap();
-
-		if let Some(desired) = guard.desired {
-			guard.actual = desired;
-			guard.desired = None;
-			Some(guard.actual)
-		} else {
-			None
+	// Get the actual val when it has changed, notifying the setter of state change
+	//
+	// NOTE: should only be called on the child thread, ideally as part of a tokio::select block
+	pub async fn get_new(&mut self) -> T {
+		// Wait for [desired] to change
+		loop {
+			self.getter_wake.notified().await;
+			match self.desired {
+				Some(val) => {
+					self.desired = None;
+					self.actual = val;
+					self.setter_wake.notify_one();
+					return val;
+				},
+				None => {}
+			}
 		}
 	}
 }
