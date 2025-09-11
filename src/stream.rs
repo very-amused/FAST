@@ -1,11 +1,10 @@
 #![allow(dead_code)]
-use tokio::sync::oneshot;
 use tokio::{task, time};
 use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use std::borrow::BorrowMut;
 use std::io;
 use std::os::raw::c_int;
-use std::sync::{Condvar, Mutex};
+use std::sync::Mutex;
 use crossbeam_queue::ArrayQueue;
 
 use crate::sys::FastStreamSettings;
