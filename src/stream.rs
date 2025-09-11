@@ -138,7 +138,6 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
 
 	// Event loop
-'evt_loop:
 	loop {
 		// Wait for tick or pause signal
 		tokio::select! {
@@ -152,13 +151,8 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 					}
 				}
 			},
-			pause = stream.paused.get_new() => {
-				// Pause flag changed
-
+			pause = stream.paused.get_new() => if pause {
 				// Wait until unpaused
-				if !pause {
-					continue 'evt_loop;
-				}
 				while stream.paused.get_new().await == true {}
 			}
 		}
