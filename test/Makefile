@@ -3,9 +3,16 @@ bin-tests=$(src-tests:.c=)
 libfast=../target/debug/libfast.a
 override CFLAGS = -O1 -I../include/
 
+# Prefer building with clang
+ifneq (,$(shell which clang))
+	CC=clang
+else
+	CC=gcc
+endif
+
 define compile-test
 $2: $1
-	$$(CC) $$(CFLAGS) -o$$@ $$< $(libfast)
+	clang $$(CFLAGS) -o$$@ $$< $(libfast)
 endef
 
 all=$(src-tests)
