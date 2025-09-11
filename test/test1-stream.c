@@ -19,15 +19,39 @@ int main() {
 		return 1;
 	}
 
-	// Start stream and play for 2s
+	// Start stream
 	if (FastStream_start(stream) != 0) {
 		fprintf(stderr, "Error calling FastStream_start\n");
 	}
 
-	sleep(2);
-	if (FastStream_play(stream, false) != 0) {
-		fprintf(stderr, "Error pausing with FastStream_play\n");
+	for (int i = 0; i < 3; i++) {
+		// Play for 2s (200 ticks)
+		sleep(2);
+
+		// Pause for 1s
+		if (FastStream_play(stream, false) != 0) {
+			fprintf(stderr, "Error pausing with FastStream_play\n");
+		}
+		sleep(1);
+
+		// Play for 1s (100 ticks)
+		if (FastStream_play(stream, true) != 0) {
+			fprintf(stderr, "Error playing with FastStream_play\n");
+		}
+		sleep(1);
+
+		// Pause for 1s
+		if (FastStream_play(stream, false) != 0) {
+			fprintf(stderr, "Error pausing with FastStream_play\n");
+		}
+		sleep(1);
+		if (i == 2) {
+			break;
+		} else if (FastStream_play(stream, true) != 0) {
+			fprintf(stderr, "Error playing with FastStream_play\n");
+		}
 	}
+
 
 
 	// Cleanup

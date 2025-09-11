@@ -136,21 +136,22 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	let mut interval = time::interval(READ_INTERVAL_DURATION);
 	// CRITICAL: align ticks to play/pause event
 	interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
-	interval.tick().await;
 
 	// Compute read size (bytes) for each tick
 	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
+
+	let mut n_ticks: usize = 0;
 
 	// Event loop
 	loop {
 		// Wait for tick or pause signal
 		tokio::select! {
 			_ = interval.tick() => if !stream.paused.get() {
-				if stream.paused.get() {
-				}
+				n_ticks += 1;
+				eprintln!("{} ticks elapsed ({} bytes read)\n", n_ticks, n_ticks * read_size);
 				// Read {read_size} bytes each tick
 				for _ in 0..read_size {
-					if buffer.data.pop() == None {
+					if buffer.data.pop() == None  && !cfg!(debug_assertions){
 						eprintln!("Read error: FastStream buffer is empty");
 					}
 				}

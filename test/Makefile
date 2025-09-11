@@ -11,8 +11,8 @@ else
 endif
 
 define compile-test
-$2: $1
-	clang $$(CFLAGS) -o$$@ $$< $(libfast)
+$2: $1 $(libfast)
+	clang $$(CFLAGS) -o$$@ $$^
 endef
 
 all: $(bin-tests)
@@ -22,5 +22,5 @@ all: $(bin-tests)
 $(foreach f,$(src-tests),$(eval $(call compile-test,$(f),$(f:.c=))))
 
 clean: $(bin-tests)
-	rm $<
+	rm $^
 .PHONY: clean
