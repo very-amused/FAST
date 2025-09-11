@@ -48,6 +48,7 @@ fn new_runtime() -> io::Result<Runtime>{
 		.build()
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut FastStream {
 	// Create buffer
 	let frame_size: usize = unsafe {
@@ -86,6 +87,7 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 	Box::leak(stream)
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn FastStream_free(stream_ptr: *mut FastStream) {
 	let stream = unsafe { Box::from_raw(stream_ptr) };
 	if let Some(thr) = stream.stream_task {
@@ -98,6 +100,7 @@ pub extern "C" fn FastStream_free(stream_ptr: *mut FastStream) {
 	// stream gets dropped
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
 	// Spawn stream task
 	let stream = unsafe { (*stream_ptr).borrow_mut() };
@@ -109,6 +112,7 @@ pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
 	return FastStream_play(stream_ptr, true);
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
 	let stream = unsafe { (*stream_ptr).borrow_mut() };
 	let paused = stream.paused.get();

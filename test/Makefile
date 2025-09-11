@@ -1,7 +1,7 @@
 src-tests=test1-stream.c
 bin-tests=$(src-tests:.c=)
 libfast=../target/debug/libfast.a
-override CFLAGS = -O1 -I../include/
+override CFLAGS = -O1 -I../include/ -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
 
 # Prefer building with clang
 ifneq (,$(shell which clang))
@@ -15,7 +15,8 @@ $2: $1
 	clang $$(CFLAGS) -o$$@ $$< $(libfast)
 endef
 
-all=$(src-tests)
+all: $(bin-tests)
+.PHONY: all
 
 # Generate test rules
 $(foreach f,$(src-tests),$(eval $(call compile-test,$(f),$(f:.c=))))
