@@ -132,6 +132,7 @@ version = "0.1.0"
 dependencies = [
  "bindgen",
  "crossbeam-queue",
+ "parking_lot",
  "tokio",
 ]
 

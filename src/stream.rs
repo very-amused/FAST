@@ -3,10 +3,10 @@ use tokio::{spawn, task, time};
 use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use std::borrow::BorrowMut;
 use std::ffi::c_void;
-use std::io;
+use std::{io, mem};
 use std::os::raw::c_int;
 use std::ptr::null_mut;
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
 use crossbeam_queue::ArrayQueue;
 
 use crate::sys::{self, FastStreamSettings, FastStream_write_callback};
@@ -40,6 +40,7 @@ pub struct FastStream {
 	write_cb_userdata: Userdata
 }
 
+#[derive(Clone, Copy)]
 struct FastStreamPtr(*mut FastStream);
 unsafe impl Send for FastStreamPtr {}
 
@@ -165,32 +166,14 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 
 	let mut n_ticks: usize = 0;
 
-	// Request write of [write_size] when we have the space in our buffer
-	let write_size = read_size * 2;
-	let write_cap = buffer.data.capacity() - buffer.data.len();
-	if write_cap >= write_size {
-		let n_bytes = write_size * (write_cap / write_size);
-
-		// Clunkiest shit ever
-		if let Ok(_guard) = stream.callback_lock.try_lock() {
-			stream.callback_task = Some(spawn(async move {
-				let stream = unsafe { (*stream_ptr.0).borrow_mut() };
-				let _guard = stream.callback_lock.lock();
-
-				if let Some(write_cb) = stream.write_cb {
-					unsafe { write_cb(stream_ptr.into(), n_bytes, stream.write_cb_userdata.0) };
-				}
-			}));
-		}
-	}
-
 	// Event loop
 	loop {
 		// Wait for tick or pause signal
 		tokio::select! {
 			_ = interval.tick() => if !stream.paused.get() {
-				n_ticks += 1;
 				handle_reads(stream, read_size).await;
+				handle_writes(stream_ptr, read_size).await;
+				n_ticks += 1;
 				eprintln!("{} ticks elapsed ({} bytes read)\n", n_ticks, n_ticks * read_size);
 			},
 			pause = stream.paused.get_new() => if pause {
@@ -229,11 +212,13 @@ async fn handle_writes(stream_ptr: FastStreamPtr, read_size: usize) {
 	let n_bytes = write_size * (write_cap / write_size);
 
 	// Clunkiest shit ever
-	if let Ok(_guard) = stream.callback_lock.try_lock() {
-		// FIXME: find way to seamlessly move guard to callback_task
+	if let Some(_guard) = stream.callback_lock.try_lock() {
+
+		// move guard into the spawned callback
+		mem::forget(_guard);
 		stream.callback_task = Some(spawn(async move {
 			let stream = unsafe { (*stream_ptr.0).borrow_mut() };
-			let _guard = _guard;
+			let _guard = unsafe { stream.callback_lock.make_guard_unchecked() };
 
 			if let Some(write_cb) = stream.write_cb {
 				unsafe { write_cb(stream_ptr.into(), n_bytes, stream.write_cb_userdata.0) };

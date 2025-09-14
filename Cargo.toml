@@ -9,6 +9,7 @@ crate-type = ["staticlib"]
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 crossbeam-queue = "0.3"
+parking_lot = "0.12.4"
 
 [build-dependencies]
 bindgen = "0.71.0"
