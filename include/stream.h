@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 // A fast STREAM instance which consumes audio frames on a clock,
 // simulating an audio stream connected to a real audio server such as pulseaudio or pipewire
@@ -32,3 +33,10 @@ int FastStream_start(FastStream *stream);
 
 // Play/pause a FastStream, blocking until the desired play/pause state is achieved
 int FastStream_play(FastStream *stream, bool play);
+
+// Callback to write [n_bytes] of audio data to a FastStream
+// Set via [FastStream_set_write_cb]
+typedef void (*FastStream_write_callback)(FastStream *stream, size_t n_bytes, void *userdata);
+
+// Set the write callback for a FastStream
+void FastStream_set_write_cb(FastStream *stream, FastStream_write_callback *cb, void *userdata);
