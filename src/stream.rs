@@ -1,14 +1,15 @@
 #![allow(dead_code)]
-use tokio::{task, time};
+use tokio::{spawn, task, time};
 use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use std::borrow::BorrowMut;
+use std::ffi::c_void;
 use std::io;
 use std::os::raw::c_int;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 use crossbeam_queue::ArrayQueue;
 
-use crate::sys::{FastStreamSettings, FastStream_write_callback};
+use crate::sys::{self, FastStreamSettings, FastStream_write_callback};
 use crate::thread_flag::ThreadFlag;
 use crate::userdata::Userdata;
 
@@ -151,6 +152,20 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
 
 	let mut n_ticks: usize = 0;
+
+	// Request write of [write_size] when we have the space in our buffer
+	let write_size = read_size * 2;
+	let write_cap = buffer.data.capacity() - buffer.data.len();
+	if write_cap >= write_size {
+		stream.callback_task = Some(spawn(async {
+			let _guard = stream.callback_lock.lock().unwrap();
+			if let Some(write_cb) = stream.write_cb {
+				let n_bytes = write_size * (write_cap / write_size);
+				// FIXME: FastStream into sys::FastStream
+				write_cb(stream, n_bytes, stream.write_cb_userdata.0);
+			}
+		}));
+	}
 
 	// Event loop
 	loop {
