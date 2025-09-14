@@ -4,11 +4,15 @@ use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use std::borrow::BorrowMut;
 use std::io;
 use std::os::raw::c_int;
+use std::ptr::null_mut;
 use std::sync::Mutex;
 use crossbeam_queue::ArrayQueue;
 
-use crate::sys::FastStreamSettings;
+use crate::sys::{FastStreamSettings, FastStream_write_callback};
 use crate::thread_flag::ThreadFlag;
+use crate::userdata::Userdata;
+
+pub mod callback;
 
 /// An audio sink for FAST
 pub struct FastStream {
@@ -22,13 +26,17 @@ pub struct FastStream {
 	stream_task: Option<task::JoinHandle<()>>,
 	paused: ThreadFlag<bool>, // Controls + indicates whether the stream is paused
 
+
+
+	// Callbacks
 	/// Thread that runs callback routines
 	callback_task: Option<task::JoinHandle<()>>,
-
-
-	// Mutices
-	callback_lock: Mutex<()> // Lock to ensure we run one callback at a time. Must be acquired when
-													 // spawning a callback task
+	/// Lock to ensure we run one callback at a time
+	/// Must be acquired when spawning a callback task
+	callback_lock: Mutex<()>,
+	// Callback for writing audio bytes to [buffer]
+	write_cb: FastStream_write_callback,
+	write_cb_userdata: Userdata
 }
 
 struct FastStreamBuffer {
@@ -82,7 +90,9 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 		paused: ThreadFlag::new(true),
 
 		callback_task: None,
-		callback_lock: Mutex::new(())
+		callback_lock: Mutex::new(()),
+		write_cb: None,
+		write_cb_userdata: Userdata(null_mut())
 	});
 	Box::leak(stream)
 }
