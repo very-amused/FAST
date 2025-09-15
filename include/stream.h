@@ -45,4 +45,4 @@ void FastStream_set_write_cb(FastStream *stream, FastStream_write_callback *cb, 
 // Should be called in a [FastStream_write_callback].
 //
 // Returns 0 on success, nonzero on error
-int FastStream_write(FastStream *stream, unsigned char *src, size_t n);
+int FastStream_write(FastStream *stream, const unsigned char *src, size_t n);

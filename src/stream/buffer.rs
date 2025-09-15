@@ -1,8 +1,12 @@
-use std::io::Write;
+use std::slice;
+use std::{io::Write};
+use std::ffi::{c_uchar, c_int};
 
 use crossbeam_queue::ArrayQueue;
 
 use crate::sys::FastStreamSettings;
+
+use super::FastStream;
 
 pub struct FastStreamBuffer {
 	data: ArrayQueue<u8>, // Ring buffer of raw PCM data to consume
@@ -72,4 +76,22 @@ impl Write for FastStreamBuffer {
 	fn flush(&mut self) -> std::io::Result<()> {
 		Ok(())
 	}
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn FastStream_write(stream_ptr: *mut FastStream, src: *const c_uchar, n: usize) -> c_int {
+	let stream = unsafe { &mut *stream_ptr };
+	let buffer = &mut stream.buffer;
+
+	// Construct slice and write to our stream's buffer
+	let data = unsafe { slice::from_raw_parts(src, n) };
+	if let Err(e) = buffer.write_all(data) {
+		if cfg!(debug_assertions) {
+			eprintln!("FastStream write error: {}", e);
+		}
+
+		return 1;
+	}
+
+	return 0;
 }
