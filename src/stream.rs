@@ -7,13 +7,14 @@ use std::{io, mem};
 use std::os::raw::c_int;
 use std::ptr::null_mut;
 use parking_lot::Mutex;
-use crossbeam_queue::ArrayQueue;
+
+mod callback;
+mod buffer;
 
 use crate::sys::{self, FastStreamSettings, FastStream_write_callback};
 use crate::thread_flag::ThreadFlag;
 use crate::userdata::Userdata;
-
-pub mod callback;
+use buffer::FastStreamBuffer;
 
 /// An audio sink for FAST
 pub struct FastStream {
@@ -56,12 +57,6 @@ impl Into<FastStreamPtr> for *mut sys::FastStream {
 	}
 }
 
-struct FastStreamBuffer {
-	data: ArrayQueue<u8>, // Ring buffer of raw PCM data to consume
-	frame_size: usize, // sample_size * n_channels, our minimum read unit
-	sample_rate: usize// Numer of audio frames to read per second
-}
-
 /// Initialize a Tokio runtime capable of powering a FastStream
 fn new_runtime() -> io::Result<Runtime>{
 	RuntimeBuilder::new_multi_thread()
@@ -71,20 +66,8 @@ fn new_runtime() -> io::Result<Runtime>{
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut FastStream {
-	// Create buffer
-	let frame_size: usize = unsafe {
-		((*settings).sample_size as usize) * (*settings).n_channels as usize
-	};
-	let sample_rate: usize = unsafe { (*settings).sample_rate as usize };
-	let buf_size: usize = unsafe {
-		(frame_size * sample_rate * (*settings).buffer_ms as usize) / 1000
-	};
-	let buffer = FastStreamBuffer {
-		data: ArrayQueue::new(buf_size),
-		frame_size,
-		sample_rate
-	};
+pub extern "C" fn FastStream_new(settings_ptr: *const FastStreamSettings) -> *mut FastStream {
+	let settings = unsafe { &*settings_ptr };
 
 	// Initialize Tokio async runtime
 	let runtime = match new_runtime() {
@@ -98,7 +81,7 @@ pub extern "C" fn FastStream_new(settings: *const FastStreamSettings) -> *mut Fa
 	// Create stream
 	let stream = Box::new(FastStream {
 		runtime,
-		buffer,
+		buffer: FastStreamBuffer::new(settings),
 
 		stream_task: None,
 		paused: ThreadFlag::new(true),
@@ -155,14 +138,14 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 	let buffer = &mut stream.buffer;
 
 	// Set up interval to read frames on
-	const READ_INTERVAL_MS: u64 = 10;
+	const READ_INTERVAL_MS: u64 = FastStreamBuffer::read_interval_ms();
 	const READ_INTERVAL_DURATION: time::Duration = time::Duration::from_millis(READ_INTERVAL_MS); // i.e reads of 441 frames/10ms @ 44.1khz
 	let mut interval = time::interval(READ_INTERVAL_DURATION);
 	// CRITICAL: align ticks to play/pause event
 	interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
 	// Compute read size (bytes) for each tick
-	let read_size: usize = (buffer.sample_rate / (1000 / READ_INTERVAL_MS as usize)) * buffer.frame_size;
+	let read_size = buffer.read_size();
 
 	let mut n_ticks: usize = 0;
 
@@ -189,21 +172,19 @@ async fn handle_reads(stream: &mut FastStream, read_size: usize) {
 	let buffer = &mut stream.buffer;
 
 	// Read {read_size} bytes each tick
-	for _ in 0..read_size {
-		if buffer.data.pop() == None  && !cfg!(debug_assertions) {
-			eprintln!("Read error: FastStream buffer is empty");
-		}
+	if let Err(e) = buffer.read(read_size) {
+		eprintln!("Read error: {}", e);
 	}
 }
 
 // Handle writes (via callback) for each tick
 async fn handle_writes(stream_ptr: FastStreamPtr, read_size: usize) {
-	let stream = unsafe { (*stream_ptr.0).borrow_mut() };
+	let stream = unsafe { &mut (*stream_ptr.0) };
 	let buffer = &mut stream.buffer;
 
 	// Request write of [write_size] when we have the space in our buffer
 	let write_size = read_size * 2;
-	let write_cap = buffer.data.capacity() - buffer.data.len();
+	let write_cap = buffer.write_capacity();
 	if write_cap < write_size {
 		return;
 	}
@@ -217,7 +198,7 @@ async fn handle_writes(stream_ptr: FastStreamPtr, read_size: usize) {
 		// move guard into the spawned callback
 		mem::forget(_guard);
 		stream.callback_task = Some(spawn(async move {
-			let stream = unsafe { (*stream_ptr.0).borrow_mut() };
+			let stream = unsafe { &mut *stream_ptr.0 };
 			let _guard = unsafe { stream.callback_lock.make_guard_unchecked() };
 
 			if let Some(write_cb) = stream.write_cb {
