@@ -182,8 +182,9 @@ async fn handle_writes(stream_ptr: FastStreamPtr, read_size: usize) {
 	let stream = unsafe { &mut (*stream_ptr.0) };
 	let buffer = &mut stream.buffer;
 
-	// Request write of [write_size] when we have the space in our buffer
-	let write_size = read_size * 2;
+	// We request writes of 50ms of audio at a time
+	// The user can then write up to 50ms each time in the callback
+	let write_size = read_size * 5;
 	let write_cap = buffer.write_capacity();
 	if write_cap < write_size {
 		return;
