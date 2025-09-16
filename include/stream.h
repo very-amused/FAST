@@ -37,9 +37,8 @@ int FastStream_play(FastStream *stream, bool play);
 // Callback to write [n_bytes] of audio data to a FastStream
 // Set via [FastStream_set_write_cb]
 typedef void (*FastStream_write_callback)(FastStream *stream, size_t n_bytes, void *userdata);
-
 // Set the write callback for a FastStream
-void FastStream_set_write_cb(FastStream *stream, FastStream_write_callback *cb, void *userdata);
+void FastStream_set_write_cb(FastStream *stream, FastStream_write_callback cb, void *userdata);
 
 // Write [n] bytes of audio data from [src] to a FastStream's buffer.
 // Should be called in a [FastStream_write_callback].
