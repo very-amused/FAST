@@ -1,4 +1,4 @@
-src-tests=test1-stream.c
+src-tests=test1-stream.c test2-stream-cb.c
 bin-tests=$(src-tests:.c=)
 libfast=../target/debug/libfast.a
 override CFLAGS = -O1 -I../include/ -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc

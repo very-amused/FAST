@@ -38,33 +38,26 @@ int main() {
 		fprintf(stderr, "Error calling FastStream_start\n");
 	}
 
-	for (int i = 0; i < 3; i++) {
-		// Play for 2s (200 ticks)
-		sleep(2);
+	// Play for 2s (200 ticks)
+	sleep(2);
 
-		// Pause for 1s
-		if (FastStream_play(stream, false) != 0) {
-			fprintf(stderr, "Error pausing with FastStream_play\n");
-		}
-		sleep(1);
-
-		// Play for 1s (100 ticks)
-		if (FastStream_play(stream, true) != 0) {
-			fprintf(stderr, "Error playing with FastStream_play\n");
-		}
-		sleep(1);
-
-		// Pause for 1s
-		if (FastStream_play(stream, false) != 0) {
-			fprintf(stderr, "Error pausing with FastStream_play\n");
-		}
-		sleep(1);
-		if (i == 2) {
-			break;
-		} else if (FastStream_play(stream, true) != 0) {
-			fprintf(stderr, "Error playing with FastStream_play\n");
-		}
+	// Pause for 1s
+	if (FastStream_play(stream, false) != 0) {
+		fprintf(stderr, "Error pausing with FastStream_play\n");
 	}
+	sleep(1);
+
+	// Play for 3s (300 ticks)
+	if (FastStream_play(stream, true) != 0) {
+		fprintf(stderr, "Error playing with FastStream_play\n");
+	}
+	sleep(3);
+
+	// Pause for 1s
+	if (FastStream_play(stream, false) != 0) {
+		fprintf(stderr, "Error pausing with FastStream_play\n");
+	}
+	sleep(1);
 
 	// Cleanup
 	FastStream_free(stream);
@@ -76,10 +69,17 @@ static void stream_write_cb(FastStream *stream, size_t n_bytes, void *userdata) 
 	static size_t n = 0;
 	unsigned char *wavdata = userdata;
 
+	if (n >= WAV_LEN) {
+		fprintf(stderr, "exiting stream_write_cb, end of audio data reached\n");
+		return;
+	}
+
 	int status = FastStream_write(stream, &wavdata[n], n_bytes);
 	if (status == 0) {
 		n += n_bytes;
 	} else {
 		fprintf(stderr, "FastStream_write failed in stream_write_cb\n");
 	}
+
+	fprintf(stderr, "stream_write_cb called (%zu bytes written, total: %zu/%zu)\n", n_bytes, n, WAV_LEN);
 }
