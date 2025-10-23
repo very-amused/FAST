@@ -15,11 +15,13 @@ else
 	outfile = 'libfast.a'
 endif
 
-custom_target('fast',
+libfast = custom_target('fast',
 	input : [],
 	output : outfile,
 	build_by_default : true,
 	build_always_stale : true,
 	command : [py, meson.project_source_root() / 'build_release.py', '@OUTPUT@'],
-	env : env
-	)
+	env : env)
+
+libfast_dep = declare_dependency(include_directories : include_directories('include'),
+	link_with : libfast)
