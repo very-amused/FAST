@@ -4,10 +4,11 @@ use tokio::task::JoinHandle;
 use tokio::runtime::{Runtime as TokioRuntime, Builder as RuntimeBuilder};
 use parking_lot::Mutex;
 use std::{io,mem};
+use std::sync::Arc;
 
 /// An async-loop emulator providing a mutex over FAST operations.
 pub struct FastLoop {
-	runtime: TokioRuntime,
+	runtime: Arc<TokioRuntime>,
 	lock: Mutex<()>,
 
 	// Callback handling
@@ -30,7 +31,7 @@ pub extern "C" fn FastLoop_new() -> *mut FastLoop {
 	};
 
 	let floop = Box::new(FastLoop {
-		runtime,
+		runtime: Arc::new(runtime),
 		lock: Mutex::new(()),
 		callback_task: None
 	});
