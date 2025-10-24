@@ -6,6 +6,7 @@ use std::ffi::c_void;
 use std::{io, mem};
 use std::os::raw::c_int;
 use std::ptr::null_mut;
+use std::sync::Arc;
 use parking_lot::Mutex;
 
 mod callback;
@@ -18,7 +19,7 @@ use buffer::FastStreamBuffer;
 
 /// An audio sink for FAST
 pub struct FastStream {
-	runtime: tokio::runtime::Runtime,
+	runtime: Arc<Runtime>, // We need to hold this to keep stream_task valid
 	/// Buffer that
 	/// - [stream_task] reads from
 	/// - [callback_task] writes to

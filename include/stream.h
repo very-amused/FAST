@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "server.h"
+
 // A fast STREAM instance which consumes audio frames on a clock,
 // simulating an audio stream connected to a real audio server such as pulseaudio or pipewire
 //
@@ -22,7 +24,7 @@ typedef struct FastStreamSettings {
 // NOTE: The stream starts in a paused/corked state and is not started until [FastStream_start] is called.
 //
 // Returns NULL on error.
-FastStream *FastStream_new(const FastStreamSettings *settings);
+FastStream *FastStream_new(FastServer *srv, const FastStreamSettings *settings);
 // Stop, deinitialize and free a FastStream
 void FastStream_free(FastStream *stream);
 

@@ -1,4 +1,5 @@
 use tokio::runtime::{Runtime, Builder as RuntimeBuilder};
+use std::ffi::c_int;
 use std::io;
 use std::sync::Arc;
 
@@ -25,10 +26,21 @@ pub extern "C" fn FastServer_new() -> *mut FastServer {
 
 /// Deinitialize and free a FastServer
 #[unsafe(no_mangle)]
-pub extern "C" fn FastServer_free(srv_ptr: *mut FastServer) {
-	let _srv = unsafe { Box::from_raw(srv_ptr) };
+pub extern "C" fn FastServer_free(srv_ptr: *mut FastServer) -> c_int {
+	let mut srv = unsafe { Box::from_raw(srv_ptr) };
 
-	// _srv gets dropped
+	match Arc::try_unwrap(srv.0) {
+		Ok(rt) => {
+			drop(rt);
+			0 // FastServer is dropped
+		},
+		Err(arc_rt) => {
+			srv.0 = arc_rt;
+			Box::leak(srv); // prevent srv from being dropped
+			eprintln!("Failed to unwrap Tokio runtime! Persistent references exist.");
+			1
+		}
+	}
 }
 
 /// Initialize a Tokio runtime for powering a FastServer
