@@ -18,6 +18,21 @@ struct FastLoopData {
 	callback_task: Option<JoinHandle<()>>
 }
 
+impl FastLoop {
+	pub fn run_callback<F>(&mut self, callback: F)
+	where F: FnOnce() -> () + Send + 'static {
+		let mut inner = self.data.lock();
+		// move guard into the spawned callback
+		// This is why we can't do mutices the proper way.
+		// FIXME
+		inner.callback_task = Some(inner.runtime.spawn_blocking(|| {
+			let guard = self.data.make_guard_unchecked();
+		}));
+
+		mem::forget(inner); // Allow callback to continue with mutex lock
+	}
+}
+
 /// Create a new FastLoop ready for use.
 #[unsafe(no_mangle)]
 pub extern "C" fn FastLoop_new(srv_ptr: *mut FastServer) -> *mut FastLoop {
