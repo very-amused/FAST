@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use tokio::{spawn, task, time};
-use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
+use tokio::runtime::Runtime;
 use std::borrow::BorrowMut;
 use std::ffi::c_void;
-use std::{io, mem};
+use std::mem;
 use std::os::raw::c_int;
 use std::ptr::null_mut;
 use std::sync::Arc;
@@ -13,6 +13,7 @@ mod callback;
 mod buffer;
 
 use crate::sys::{self, FastStreamSettings, FastStream_write_callback};
+use crate::server::FastServer;
 use crate::thread_flag::ThreadFlag;
 use crate::userdata::Userdata;
 use buffer::FastStreamBuffer;
@@ -58,30 +59,15 @@ impl Into<FastStreamPtr> for *mut sys::FastStream {
 	}
 }
 
-/// Initialize a Tokio runtime capable of powering a FastStream
-fn new_runtime() -> io::Result<Runtime>{
-	RuntimeBuilder::new_multi_thread()
-		.worker_threads(2) // stream_task + callback_task
-		.enable_all()
-		.build()
-}
 
 #[unsafe(no_mangle)]
-pub extern "C" fn FastStream_new(settings_ptr: *const FastStreamSettings) -> *mut FastStream {
+pub extern "C" fn FastStream_new(srv_ptr: *mut FastServer, settings_ptr: *const FastStreamSettings) -> *mut FastStream {
+	let srv = unsafe { &*srv_ptr };
 	let settings = unsafe { &*settings_ptr };
-
-	// Initialize Tokio async runtime
-	let runtime = match new_runtime() {
-		Ok(rt) => rt,
-		Err(err) => {
-			eprintln!("Failed to initialize Tokio runtime: {}", err);
-			return std::ptr::null_mut();
-		}
-	};
 
 	// Create stream
 	let stream = Box::new(FastStream {
-		runtime,
+		runtime: srv.0.clone(),
 		buffer: FastStreamBuffer::new(settings),
 
 		stream_task: None,

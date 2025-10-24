@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "server.h"
 #include "stream.h"
 
 static const FastStreamSettings STREAM_SETTINGS = {
@@ -12,8 +13,15 @@ static const FastStreamSettings STREAM_SETTINGS = {
 };
 
 int main() {
+	// Create server
+	FastServer *srv = FastServer_new();
+	if (!srv) {
+		fprintf(stderr, "Failed to create server\n");
+		return 1;
+	}
+
 	// Create stream
-	FastStream *stream = FastStream_new(&STREAM_SETTINGS);
+	FastStream *stream = FastStream_new(srv, &STREAM_SETTINGS);
 	if (!stream) {
 		fprintf(stderr, "Failed to create stream\n");
 		return 1;
@@ -56,6 +64,7 @@ int main() {
 
 	// Cleanup
 	FastStream_free(stream);
+	FastServer_free(srv);
 
 	return 0;
 }

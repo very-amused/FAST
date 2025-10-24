@@ -23,8 +23,15 @@ int main() {
 	unsigned char *wav = malloc(WAV_LEN);
 	memset(wav, 0x00, WAV_LEN);
 
+	// Create server
+	FastServer *srv = FastServer_new();
+	if (!srv) {
+		fprintf(stderr, "Failed to create server\n");
+		return 1;
+	}
+
 	// Create stream
-	FastStream *stream = FastStream_new(&STREAM_SETTINGS);
+	FastStream *stream = FastStream_new(srv, &STREAM_SETTINGS);
 	if (!stream) {
 		fprintf(stderr, "Failed to create stream\n");
 		return 1;
@@ -61,6 +68,7 @@ int main() {
 
 	// Cleanup
 	FastStream_free(stream);
+	FastServer_free(srv);
 
 	return 0;
 }
