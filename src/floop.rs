@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use tokio::task::JoinHandle;
-use tokio::runtime::{Runtime, Builder as RuntimeBuilder};
-use parking_lot::{Mutex,MutexGuard};
+use tokio::runtime::Runtime;
+use parking_lot::{Mutex};
 use std::{mem};
 use std::sync::Arc;
 
@@ -15,11 +15,25 @@ pub struct FastLoop {
 	callback_task: Option<JoinHandle<()>>
 }
 
+// Don't try this at home
+#[derive(Clone, Copy)]
+struct FastLoopPtr(*mut FastLoop);
+unsafe impl Send for FastLoopPtr {}
 
 impl FastLoop {
-	pub fn run_callback<F>(&mut self, callback: F)
-	where F: FnOnce() -> () + Send + 'static {
-		todo!()
+	pub fn run_callback<F, R>(&mut self, callback: F)
+	where F: FnOnce() -> () + Send + 'static{
+		// Lock the loop
+		let guard = self.lock.lock();
+		
+		// move guard into the spawned callback
+		mem::forget(guard);
+		// get a mutex ref w/o borrow checking
+		let mutex = unsafe { (&self.lock as *const Mutex<()>).as_ref() }.unwrap();
+		self.callback_task = Some(self.runtime.spawn_blocking(move || {
+			callback();
+			unsafe { mutex.force_unlock() };
+		}));
 	}
 }
 
@@ -39,14 +53,10 @@ pub extern "C" fn FastLoop_new(srv_ptr: *mut FastServer) -> *mut FastLoop {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn FastLoop_free(floop_ptr: *mut FastLoop) {
-	let mut floop = unsafe { Box::from_raw(floop_ptr) };
+	let floop = unsafe { Box::from_raw(floop_ptr) };
 
-	// Abort any callback that's running
-	let guard = floop.lock.lock();
-	if let Some(thr) = floop.callback_task {
-		thr.abort();
-		floop.callback_task = None;
-	}
+	// Acquire a lock so no new callbacks can start
+	let _guard = floop.lock.lock();
 
 	// floop gets dropped
 }
