@@ -21,6 +21,6 @@ all: $(bin-tests)
 # Generate test rules
 $(foreach f,$(src-tests),$(eval $(call compile-test,$(f),$(f:.c=))))
 
-clean: $(bin-tests)
-	rm $^
+clean:
+	rm $(bin-tests)
 .PHONY: clean

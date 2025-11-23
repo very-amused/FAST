@@ -7,19 +7,21 @@ use std::mem;
 use std::os::raw::c_int;
 use std::ptr::null_mut;
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 mod callback;
 mod buffer;
 
+use crate::floop::{FastLoop, FastLoopPtr, FastLoop_lock, FastLoop_unlock};
 use crate::sys::{self, FastStreamSettings, FastStream_write_callback};
-use crate::server::FastServer;
 use crate::thread_flag::ThreadFlag;
 use crate::userdata::Userdata;
 use buffer::FastStreamBuffer;
 
 /// An audio sink for FAST
 pub struct FastStream {
+	floop: FastLoopPtr,
+	runtime: Arc<Runtime>, // Runtime responsible for stream_task, held for Arc
+
 	/// Buffer that
 	/// - [stream_task] reads from
 	/// - [callback_task] writes to
@@ -28,16 +30,7 @@ pub struct FastStream {
 	/// Thread that consumes audio frames
 	stream_task: Option<task::JoinHandle<()>>,
 	paused: ThreadFlag<bool>, // Controls + indicates whether the stream is paused
-	runtime: Arc<Runtime>, // Runtime responsible for stream_task, held for Arc
 
-
-
-	// Callbacks
-	/// Thread that runs callback routines
-	callback_task: Option<task::JoinHandle<()>>,
-	/// Lock to ensure we run one callback at a time
-	/// Must be acquired when spawning a callback task
-	callback_lock: Mutex<()>,
 	// Callback for writing audio bytes to [buffer]
 	write_cb: FastStream_write_callback,
 	write_cb_userdata: Userdata
@@ -61,20 +54,19 @@ impl Into<FastStreamPtr> for *mut sys::FastStream {
 
 
 #[unsafe(no_mangle)]
-pub extern "C" fn FastStream_new(srv_ptr: *mut FastServer, settings_ptr: *const FastStreamSettings) -> *mut FastStream {
-	let srv = unsafe { &*srv_ptr };
+pub extern "C" fn FastStream_new(loop_ptr: *mut FastLoop, settings_ptr: *const FastStreamSettings) -> *mut FastStream {
+	let floop = unsafe { &*loop_ptr };
 	let settings = unsafe { &*settings_ptr };
 
 	// Create stream
 	let stream = Box::new(FastStream {
-		runtime: srv.runtime.clone(),
+		floop: FastLoopPtr(loop_ptr),
+		runtime: floop.runtime.clone(),
 		buffer: FastStreamBuffer::new(settings),
 
 		stream_task: None,
 		paused: ThreadFlag::new(true),
 
-		callback_task: None,
-		callback_lock: Mutex::new(()),
 		write_cb: None,
 		write_cb_userdata: Userdata(null_mut())
 	});
@@ -83,15 +75,13 @@ pub extern "C" fn FastStream_new(srv_ptr: *mut FastServer, settings_ptr: *const 
 
 #[unsafe(no_mangle)]
 pub extern "C" fn FastStream_free(stream_ptr: *mut FastStream) {
-	let stream = unsafe { Box::from_raw(stream_ptr) };
+	let mut stream = unsafe { Box::from_raw(stream_ptr) };
 	if let Some(thr) = stream.stream_task {
 		thr.abort();
-	}
-	if let Some(thr) = stream.callback_task {
-		thr.abort();
+		stream.stream_task = None;
 	}
 
-	// stream gets dropped
+	drop(stream)
 }
 
 #[unsafe(no_mangle)]
@@ -109,14 +99,20 @@ pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
 #[unsafe(no_mangle)]
 pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
 	let stream = unsafe { (*stream_ptr).borrow_mut() };
-	let paused = stream.paused.get();
 
-	// Debounce play signals
-	if (play && !paused) || (!play && paused) {
-		return 0;
+	FastLoop_lock(stream.floop.0);
+	{
+		let paused = stream.paused.get();
+
+		// Debounce play signals
+		if (play && !paused) || (!play && paused) {
+			return 0;
+		}
+
+		stream.runtime.block_on(stream.paused.set(!play));
 	}
+	FastLoop_unlock(stream.floop.0);
 
-	stream.runtime.block_on(stream.paused.set(!play));
 	return 0;
 }
 
@@ -180,18 +176,11 @@ async fn handle_writes(stream_ptr: FastStreamPtr, read_size: usize) {
 	// Compute size for this write
 	let n_bytes = write_size * (write_cap / write_size);
 
-	// Clunkiest shit ever
-	if let Some(_guard) = stream.callback_lock.try_lock() {
-
-		// move guard into the spawned callback
-		mem::forget(_guard);
-		stream.callback_task = Some(spawn(async move {
-			let stream = unsafe { &mut *stream_ptr.0 };
-			let _guard = unsafe { stream.callback_lock.make_guard_unchecked() };
-
-			if let Some(write_cb) = stream.write_cb {
-				unsafe { write_cb(stream_ptr.into(), n_bytes, stream.write_cb_userdata.0) };
-			}
-		}));
-	}
+	// Spawn callback
+	let floop = unsafe { &mut *stream.floop.0 };
+	floop.run_callback(move || {
+		if let Some(write_cb) = stream.write_cb {
+			unsafe { write_cb(stream_ptr.into(), n_bytes, stream.write_cb_userdata.0) };
+		}
+	});
 }

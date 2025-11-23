@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "loop.h"
 #include "server.h"
 
 // A fast STREAM instance which consumes audio frames on a clock,
@@ -24,7 +25,7 @@ typedef struct FastStreamSettings {
 // NOTE: The stream starts in a paused/corked state and is not started until [FastStream_start] is called.
 //
 // Returns NULL on error.
-FastStream *FastStream_new(FastServer *srv, const FastStreamSettings *settings);
+FastStream *FastStream_new(FastLoop *loop, const FastStreamSettings *settings);
 // Stop, deinitialize and free a FastStream
 void FastStream_free(FastStream *stream);
 

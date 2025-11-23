@@ -10,18 +10,18 @@ use crate::server::FastServer;
 
 /// An async-loop emulator providing a mutex over FAST operations.
 pub struct FastLoop {
-	runtime: Arc<Runtime>,
+	pub runtime: Arc<Runtime>,
 	lock: Mutex<()>, // lock that ensures only 1 callback is run at a time
 	callback_task: Option<JoinHandle<()>>
 }
 
 // Don't try this at home
 #[derive(Clone, Copy)]
-struct FastLoopPtr(*mut FastLoop);
+pub struct FastLoopPtr(pub *mut FastLoop);
 unsafe impl Send for FastLoopPtr {}
 
 impl FastLoop {
-	pub fn run_callback<F, R>(&mut self, callback: F)
+	pub fn run_callback<F>(&mut self, callback: F)
 	where F: FnOnce() -> () + Send + 'static{
 		// Lock the loop
 		let guard = self.lock.lock();
