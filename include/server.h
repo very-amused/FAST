@@ -9,6 +9,4 @@ typedef struct FastServer FastServer;
 // Returns NULL on error.
 FastServer *FastServer_new();
 // Deinitialize a free a FastServer.
-//
-// Returns 0 on success, nonzero on error.
-int FastServer_free(FastServer *srv);
+void FastServer_free(FastServer *srv);

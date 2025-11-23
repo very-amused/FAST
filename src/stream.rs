@@ -20,7 +20,6 @@ use buffer::FastStreamBuffer;
 
 /// An audio sink for FAST
 pub struct FastStream {
-	runtime: Arc<Runtime>, // We need to hold this to keep stream_task valid
 	/// Buffer that
 	/// - [stream_task] reads from
 	/// - [callback_task] writes to
@@ -29,6 +28,7 @@ pub struct FastStream {
 	/// Thread that consumes audio frames
 	stream_task: Option<task::JoinHandle<()>>,
 	paused: ThreadFlag<bool>, // Controls + indicates whether the stream is paused
+	runtime: Arc<Runtime>, // Runtime responsible for stream_task, held for Arc
 
 
 
@@ -67,7 +67,7 @@ pub extern "C" fn FastStream_new(srv_ptr: *mut FastServer, settings_ptr: *const 
 
 	// Create stream
 	let stream = Box::new(FastStream {
-		runtime: srv.0.clone(),
+		runtime: srv.runtime.clone(),
 		buffer: FastStreamBuffer::new(settings),
 
 		stream_task: None,

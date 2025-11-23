@@ -43,7 +43,7 @@ pub extern "C" fn FastLoop_new(srv_ptr: *mut FastServer) -> *mut FastLoop {
 	let srv = unsafe { &*srv_ptr };
 
 	let floop = Box::new(FastLoop {
-		runtime: srv.0.clone(),
+		runtime: srv.runtime.clone(),
 		lock: Mutex::new(()),
 		callback_task: None
 	});
@@ -55,10 +55,7 @@ pub extern "C" fn FastLoop_new(srv_ptr: *mut FastServer) -> *mut FastLoop {
 pub extern "C" fn FastLoop_free(floop_ptr: *mut FastLoop) {
 	let floop = unsafe { Box::from_raw(floop_ptr) };
 
-	// Acquire a lock so no new callbacks can start
-	let _guard = floop.lock.lock();
-
-	// floop gets dropped
+	drop(floop)
 }
 
 #[unsafe(no_mangle)]
