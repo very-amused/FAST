@@ -2,8 +2,8 @@
 
 use tokio::task::JoinHandle;
 use tokio::runtime::Runtime;
-use parking_lot::{Mutex};
-use std::{mem};
+use parking_lot::Mutex;
+use std::mem;
 use std::sync::Arc;
 
 use crate::server::FastServer;
