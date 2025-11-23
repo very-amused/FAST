@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "loop.h"
 #include "stream.h"
 
 static const FastStreamSettings STREAM_SETTINGS = {
@@ -23,15 +24,21 @@ int main() {
 	unsigned char *wav = malloc(WAV_LEN);
 	memset(wav, 0x00, WAV_LEN);
 
-	// Create server
+	// Create server and loop
 	FastServer *srv = FastServer_new();
 	if (!srv) {
 		fprintf(stderr, "Failed to create server\n");
 		return 1;
 	}
 
+	FastLoop *loop = FastLoop_new(srv);
+	if (!loop) {
+		fprintf(stderr, "Failed to create event loop\n");
+		return 1;
+	}
+
 	// Create stream
-	FastStream *stream = FastStream_new(srv, &STREAM_SETTINGS);
+	FastStream *stream = FastStream_new(loop, &STREAM_SETTINGS);
 	if (!stream) {
 		fprintf(stderr, "Failed to create stream\n");
 		return 1;
@@ -68,7 +75,10 @@ int main() {
 
 	// Cleanup
 	FastStream_free(stream);
+	FastLoop_free(loop);
 	FastServer_free(srv);
+
+	free(wav);
 
 	return 0;
 }

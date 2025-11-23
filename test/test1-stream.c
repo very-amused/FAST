@@ -39,7 +39,8 @@ int main() {
 		fprintf(stderr, "Error calling FastStream_start\n");
 	}
 
-	for (int i = 0; i < 3; i++) {
+	static int n_loops = 1;
+	for (int i = 0; i < n_loops; i++) {
 		// Play for 2s (200 ticks)
 		sleep(2);
 
@@ -60,9 +61,17 @@ int main() {
 			fprintf(stderr, "Error pausing with FastStream_play\n");
 		}
 		sleep(1);
-		if (i == 2) {
+
+		// Play for 1s
+		if (FastStream_play(stream, true) != 0) {
+			fprintf(stderr, "Error playing with FastStream_play\n");
+		}
+		sleep(1);
+
+		if (i == n_loops-1) {
 			break;
-		} else if (FastStream_play(stream, true) != 0) {
+		}
+		if (FastStream_play(stream, true) != 0) {
 			fprintf(stderr, "Error playing with FastStream_play\n");
 		}
 	}
