@@ -70,6 +70,7 @@ pub extern "C" fn FastStream_new(loop_ptr: *mut FastLoop, settings_ptr: *const F
 		write_cb: None,
 		write_cb_userdata: Userdata(null_mut())
 	});
+
 	Box::leak(stream)
 }
 
@@ -100,18 +101,24 @@ pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
 pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
 	let stream = unsafe { (*stream_ptr).borrow_mut() };
 
+	eprintln!("FastStream_play debug p1");
 	FastLoop_lock(stream.floop.0);
+	eprintln!("FastStream_play debug p2");
 	{
 		let paused = stream.paused.get();
+		eprintln!("FastStream_play debug p3");
 
 		// Debounce play signals
 		if (play && !paused) || (!play && paused) {
 			return 0;
 		}
 
+		eprintln!("FastStream_play debug p4");
 		stream.runtime.block_on(stream.paused.set(!play));
+		eprintln!("FastStream_play debug p5");
 	}
 	FastLoop_unlock(stream.floop.0);
+	eprintln!("FastStream_play debug p6");
 
 	return 0;
 }
