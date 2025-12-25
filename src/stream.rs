@@ -101,24 +101,18 @@ pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_
 		stream.stream_task = Some(handle);
 	}
 
-	eprintln!("FastStream_play debug p1");
 	FastLoop_lock(stream.floop.0);
-	eprintln!("FastStream_play debug p2");
 	{
 		let paused = stream.paused.get();
-		eprintln!("FastStream_play debug p3");
 
 		// Debounce play signals
 		if (play && !paused) || (!play && paused) {
 			return 0;
 		}
 
-		eprintln!("FastStream_play debug p4");
 		stream.runtime.block_on(stream.paused.set(!play));
-		eprintln!("FastStream_play debug p5");
 	}
 	FastLoop_unlock(stream.floop.0);
-	eprintln!("FastStream_play debug p6");
 
 	return 0;
 }
@@ -147,7 +141,7 @@ async fn FastStream_routine(stream_ptr: FastStreamPtr) {
 				handle_reads(stream, read_size).await;
 				handle_writes(stream_ptr, read_size).await;
 				n_ticks += 1;
-				eprintln!("{} ticks elapsed ({} bytes read)\n", n_ticks, n_ticks * read_size);
+				//eprintln!("{} ticks elapsed ({} bytes read)\n", n_ticks, n_ticks * read_size);
 			},
 			pause = stream.paused.get_new() => if pause {
 				// Wait until unpaused
