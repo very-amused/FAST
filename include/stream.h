@@ -22,17 +22,12 @@ typedef struct FastStreamSettings {
 } FastStreamSettings;
 
 // Allocate and initialize a new FastStream
-// NOTE: The stream starts in a paused/corked state and is not started until [FastStream_start] is called.
+// NOTE: The stream starts in a paused/corked state and is not started until [FastStream_play] is called.
 //
 // Returns NULL on error.
 FastStream *FastStream_new(FastLoop *loop, const FastStreamSettings *settings);
 // Stop, deinitialize and free a FastStream
 void FastStream_free(FastStream *stream);
-
-// Start a FastStream, causing it to start reading audio from its buffer and requesting audio frames
-//
-// Returns 0 on success, nonzero on error
-int FastStream_start(FastStream *stream);
 
 // Play/pause a FastStream, blocking until the desired play/pause state is achieved
 int FastStream_play(FastStream *stream, bool play);

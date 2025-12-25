@@ -71,7 +71,13 @@ pub extern "C" fn FastStream_new(loop_ptr: *mut FastLoop, settings_ptr: *const F
 		write_cb_userdata: Userdata(null_mut())
 	});
 
-	Box::leak(stream)
+	// Start stream_task in a paused state
+	let stream_ptr: *mut FastStream = Box::leak(stream);
+	let stream = unsafe { &mut *stream_ptr };
+	stream.stream_task = Some(stream.runtime.spawn(
+		FastStream_routine(FastStreamPtr(stream_ptr))));
+
+	stream_ptr
 }
 
 #[unsafe(no_mangle)]
@@ -86,20 +92,14 @@ pub extern "C" fn FastStream_free(stream_ptr: *mut FastStream) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn FastStream_start(stream_ptr: *mut FastStream) -> c_int {
-	// Spawn stream task
-	let stream = unsafe { (*stream_ptr).borrow_mut() };
-	let handle = stream.runtime.spawn(
-		FastStream_routine(FastStreamPtr(stream_ptr)));
-	stream.stream_task = Some(handle);
-
-	// Start consuming audio by unpausing
-	return FastStream_play(stream_ptr, true);
-}
-
-#[unsafe(no_mangle)]
 pub extern "C" fn FastStream_play(stream_ptr: *mut FastStream, play: bool) -> c_int {
+	// Spawn stream task if needed (should not be needed in general)
 	let stream = unsafe { (*stream_ptr).borrow_mut() };
+	if stream.stream_task.is_none() {
+		let handle = stream.runtime.spawn(
+			FastStream_routine(FastStreamPtr(stream_ptr)));
+		stream.stream_task = Some(handle);
+	}
 
 	eprintln!("FastStream_play debug p1");
 	FastLoop_lock(stream.floop.0);

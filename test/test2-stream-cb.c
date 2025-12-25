@@ -48,7 +48,7 @@ int main() {
 	FastStream_set_write_cb(stream, stream_write_cb, wav);
 
 	// Start stream
-	if (FastStream_start(stream) != 0) {
+	if (FastStream_play(stream, true) != 0) {
 		fprintf(stderr, "Error calling FastStream_start\n");
 	}
 

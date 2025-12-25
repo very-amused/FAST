@@ -35,7 +35,7 @@ int main() {
 	}
 
 	// Start stream
-	if (FastStream_start(stream) != 0) {
+	if (FastStream_play(stream, true) != 0) {
 		fprintf(stderr, "Error calling FastStream_start\n");
 	}
 
