@@ -9,6 +9,12 @@ env = environment()
 env.set('MESON_PROJECT_SOURCE_ROOT', meson.project_source_root())
 env.set('MESON_PROJECT_BUILD_ROOT', meson.project_build_root())
 
+# Project dependencies
+deps = []
+# ref https://mesonbuild.com/howtox.html#add-math-library-lm-portably
+cc = meson.get_compiler('c')
+deps += cc.find_library('m', required : false) # -lm
+
 if build_machine.system() == 'windows'
 	outfile = 'libfast.lib'
 else
