@@ -30,4 +30,5 @@ libfast = custom_target('fast',
 	env : env)
 
 libfast_dep = declare_dependency(include_directories : include_directories('include'),
-	link_with : libfast)
+	link_with : libfast,
+	dependencies : deps)
