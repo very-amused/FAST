@@ -38,7 +38,18 @@ typedef void (*FastStream_write_callback)(FastStream *stream, size_t n_bytes, vo
 // Set the write callback for a FastStream
 void FastStream_set_write_cb(FastStream *stream, FastStream_write_callback cb, void *userdata);
 
-// Write [n] bytes of audio data from [src] to a FastStream's buffer.
+// Prepare for writing data to a FastStream.
+// *n_bytes is expected to be previously initialized to the
+// maximum number of bytes the caller is prepared to write.
+//
+// On return, *n_bytes is either decreased or unmodified for
+// [FastStream_write(stream, src, m)] to succeed with any size [m: m <= *n_bytes].
+//
+// If an unbounded amount of time elapses between [FastStream_begin_write] and [FastStream_write],
+// a buffer underrun may occur.
+int FastStream_begin_write(const FastStream *stream, size_t *n_bytes);
+
+// Write UP TO [n] bytes of audio data from [src] to a FastStream's buffer.
 // Should be called in a [FastStream_write_callback].
 //
 // Returns 0 on success, nonzero on error

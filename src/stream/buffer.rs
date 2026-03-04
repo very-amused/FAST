@@ -1,12 +1,7 @@
-use std::slice;
-use std::{io::Write};
-use std::ffi::{c_uchar, c_int};
-
 use crossbeam_queue::ArrayQueue;
 
+use crate::stream::error::StreamError;
 use crate::sys::FastStreamSettings;
-
-use super::FastStream;
 
 pub struct FastStreamBuffer {
 	data: ArrayQueue<u8>, // Ring buffer of raw PCM data to consume
@@ -28,70 +23,42 @@ impl FastStreamBuffer {
 			}
 	}
 
+	// Get the ideal read size for a tick occuring every [read_interval_ms] milliseconds
+	pub const fn read_size(&self) -> usize {
+		(self.sample_rate / (1000 / Self::read_interval_ms() as usize)) * self.frame_size
+	}
+	// Get the constant read interval
 	pub const fn read_interval_ms() -> u64 {
 		10
 	}
 
-	// Get the ideal read size for a tick occuring every [read_interval_ms] milliseconds
-	pub fn read_size(&self) -> usize {
-		(self.sample_rate / (1000 / Self::read_interval_ms() as usize)) * self.frame_size
-	}
 	// Get the current write capacity for the buffer
 	// (max # of bytes that can be written)
 	pub fn write_capacity(&self) -> usize {
 		self.data.capacity() - self.data.len()
 	}
-}
 
-// Read/write impls
-
-// The error we return when we exceed the buffer's fixed size by trying to read or write too many
-// bytes
-const ERR_OVERFLOW: std::io::ErrorKind = std::io::ErrorKind::QuotaExceeded;
-
-impl FastStreamBuffer {
-	pub fn read(&mut self, n: usize) -> std::io::Result<usize> {
-		for _ in 0..n {
+	pub fn read(&mut self, n: usize) -> Result<usize, StreamError> {
+		for i in 0..n {
 			if self.data.pop() == None {
-				return Err(ERR_OVERFLOW.into());
+				return Err(StreamError::BufferUnderrun(i, n));
 			}
 		}
 
 		Ok(n)
 	}
-}
 
-impl Write for FastStreamBuffer {
-	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-		let mut n: usize = 0;
+	pub fn write(&mut self, buf: &[u8]) -> Result<usize, StreamError> {
+		let n: usize = buf.len();
 
-		for b in buf {
-			self.data.push(*b).map_err(|_| ERR_OVERFLOW)?;
-			n += 1;
+		for (i, b) in buf.iter().enumerate() {
+			// if push fails,
+			// crossbeam_queue returns the byte itself as the err val
+			if let Err(_) = self.data.push(*b) {
+				return Err(StreamError::BufferOverflow(i, n));
+			}
 		}
 
 		Ok(n)
 	}
-
-	fn flush(&mut self) -> std::io::Result<()> {
-		Ok(())
-	}
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn FastStream_write(stream_ptr: *mut FastStream, src: *const c_uchar, n: usize) -> c_int {
-	let stream = unsafe { &mut *stream_ptr };
-	let buffer = &mut stream.buffer;
-
-	// Construct slice and write to our stream's buffer
-	let data = unsafe { slice::from_raw_parts(src, n) };
-	if let Err(e) = buffer.write_all(data) {
-		if cfg!(debug_assertions) {
-			eprintln!("FastStream write error: {}", e);
-		}
-
-		return 1;
-	}
-
-	return 0;
 }

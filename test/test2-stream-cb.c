@@ -84,20 +84,24 @@ int main() {
 }
 
 static void stream_write_cb(FastStream *stream, size_t n_bytes, void *userdata) {
-	static size_t n = 0;
+	static size_t n_total = 0;
 	unsigned char *wavdata = userdata;
+	const size_t wavdata_read_cap = WAV_LEN - n_total;
 
-	if (n >= WAV_LEN) {
-		fprintf(stderr, "exiting stream_write_cb, end of audio data reached\n");
+	int status = FastStream_begin_write(stream, &n_bytes);
+	if (status != 0) {
+		fprintf(stderr, "FastStream_begin_write failed in stream_write_cb\n");
 		return;
 	}
-
-	int status = FastStream_write(stream, &wavdata[n], n_bytes);
+	if (n_bytes > wavdata_read_cap) {
+		n_bytes = wavdata_read_cap;
+	}
+	status = FastStream_write(stream, &wavdata[n_total], n_bytes);
 	if (status == 0) {
-		n += n_bytes;
+		n_total += n_bytes;
 	} else {
 		fprintf(stderr, "FastStream_write failed in stream_write_cb\n");
 	}
 
-	fprintf(stderr, "stream_write_cb called (%zu bytes written, total: %zu/%zu)\n", n_bytes, n, WAV_LEN);
+	fprintf(stderr, "stream_write_cb called (%zu bytes written, total: %zu/%zu)\n", n_bytes, n_total, WAV_LEN);
 }
