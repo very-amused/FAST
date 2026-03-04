@@ -14,12 +14,17 @@ deps = []
 # ref https://mesonbuild.com/howtox.html#add-math-library-lm-portably
 cc = meson.get_compiler('c')
 deps += cc.find_library('m', required : false) # -lm
-
 if build_machine.system() == 'windows'
-	outfile = 'libfast.lib'
-else
-	outfile = 'libfast.a'
+	deps += cc.find_library('windows', required : false)
+	deps += cc.find_library('kernel32', required : false)
+	deps += cc.find_library('ntdll', required : false)
+	deps += cc.find_library('userenv', required : false)
+	deps += cc.find_library('ws2_32', required : false)
+	deps += cc.find_library('dbghelp', required : false)
+	deps += cc.find_library('/defaultlib:msvcrt', required : false)
 endif
+
+outfile = 'libfast.a'
 
 libfast = custom_target('fast',
 	input : [],
