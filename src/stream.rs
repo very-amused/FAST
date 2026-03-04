@@ -82,6 +82,10 @@ pub extern "C" fn FastStream_new(loop_ptr: *mut FastLoop, settings_ptr: *const F
 
 #[unsafe(no_mangle)]
 pub extern "C" fn FastStream_free(stream_ptr: *mut FastStream) {
+	if stream_ptr == std::ptr::null_mut() {
+		return;
+	}
+
 	let mut stream = unsafe { Box::from_raw(stream_ptr) };
 	if let Some(thr) = stream.stream_task {
 		thr.abort();

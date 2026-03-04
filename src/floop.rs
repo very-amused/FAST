@@ -53,6 +53,10 @@ pub extern "C" fn FastLoop_new(srv_ptr: *mut FastServer) -> *mut FastLoop {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn FastLoop_free(floop_ptr: *mut FastLoop) {
+	if floop_ptr == std::ptr::null_mut() {
+		return;
+	}
+
 	let floop = unsafe { Box::from_raw(floop_ptr) };
 
 	drop(floop)

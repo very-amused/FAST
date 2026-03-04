@@ -30,6 +30,10 @@ pub extern "C" fn FastServer_new() -> *mut FastServer {
 /// Deinitialize and free a FastServer
 #[unsafe(no_mangle)]
 pub extern "C" fn FastServer_free(srv_ptr: *mut FastServer) {
+	if srv_ptr == std::ptr::null_mut() {
+		return;
+	}
+
 	let srv = unsafe { Box::from_raw(srv_ptr) };
 	if Arc::strong_count(&srv.runtime) > 1 {
 		eprintln!("ERROR: FastServer_free called with actrive references to FastServer. Deadlock is possible!");
